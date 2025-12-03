@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Anna Laura AI</title>
+  <meta name="theme-color" content="#000000" />
+  <style>
+    :root{
+      --bg:#000;
+      --panel:rgba(255,255,255,0.04);
+      --muted:#9b9b9b;
+      --accent:#e5e7eb;
+      --bubble-bg:#ffffff;
+      --bubble-user-bg: rgba(255,255,255,0.06);
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--accent);font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;}
+    /* Background full cover using bg.webp - auto zoom behavior on mobile handled by cover */
+    #bg {
+      position:fixed;inset:0;
+      background-image:url("/bg.webp");
+      background-size:cover;
+      background-position:center center;
+      z-index:-2;
+      filter:brightness(0.30);
+      transform-origin:center center;
+    }
+    /* Loading overlay */
+    #loading {
+      position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:999;background:#000;
+    }
+    .typewriter {
+      font-size:24px;letter-spacing:1px;color:#fff; border-right:2px solid #fff;
+      white-space:nowrap;overflow:hidden;width:0;
+      animation:typing 2.2s steps(24) forwards, blink 0.9s step-end infinite;
+    }
+    @keyframes typing { to { width: 16rem; } }
+    @keyframes blink { 50% { border-color: transparent; } }
+
+    /* App layout */
+    #app { display:flex;flex-direction:column;height:100vh;position:relative; }
+    header { padding:12px 16px;text-align:center; backdrop-filter: blur(6px); }
+    header h1 { margin:0;font-weight:600;color:var(--accent); font-size:18px; }
+    header p { margin:6px 0 0 0;color:var(--muted);font-size:13px; }
+
+    .chat-wrap { flex:1; display:flex; flex-direction:column; padding:12px; gap:8px; overflow:hidden; }
+    #messages { flex:1; overflow:auto; padding:6px; display:flex; flex-direction:column; gap:10px; }
+
+    .bubble { max-width:82%; padding:10px 12px; border-radius:12px; line-height:1.5; box-shadow: 0 1px 0 rgba(255,255,255,0.02) inset; }
+    .bubble.ai { align-self:flex-start; background:var(--bubble-bg); color:#0a0a0a; }
+    .bubble.user { align-self:flex-end; background:var(--bubble-user-bg); color:var(--accent); }
+
+    .msg-actions { margin-top:8px; display:flex; gap:6px; flex-wrap:wrap; }
+    .msg-actions button { background:transparent;border:1px solid rgba(255,255,255,0.06); color:var(--accent); padding:6px 8px;border-radius:8px; cursor:pointer; font-size:13px; }
+
+    #typing { font-size:13px;color:var(--muted);padding:6px 8px; display:none; }
+    #typing.visible { display:block; }
+
+    footer { position:relative;padding:10px;background:transparent; }
+    .input-row { position:fixed; left:0; right:0; bottom:0; padding:10px; display:flex; gap:8px; align-items:center; background: linear-gradient(180deg, rgba(0,0,0,0.0), rgba(0,0,0,0.6)); backdrop-filter: blur(8px); }
+    #plus-btn { width:44px;height:44px;border-radius:10px;background:var(--panel);border:1px solid rgba(255,255,255,0.06);display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--accent);cursor:pointer; }
+    #user-input { flex:1; min-height:44px; max-height:180px; padding:10px;border-radius:10px;background:transparent; border:1px solid rgba(255,255,255,0.06); color:var(--accent); resize:none; outline:none; }
+    #send-btn { padding:10px 14px;border-radius:10px;background:var(--accent);border:none;color:#000;font-weight:600;cursor:pointer; }
+    #send-btn:disabled { opacity:0.5; cursor:not-allowed; }
+
+    .smallfooter { position:fixed; bottom:56px; left:0; right:0; text-align:center; font-size:11px; color:var(--muted); opacity:0.95; pointer-events:none; }
+
+    /* responsive small screens */
+    @media (max-width:600px){
+      .typewriter{ font-size:20px; }
+      .bubble{ max-width:92%; }
+      header h1{ font-size:16px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="bg" aria-hidden="true"></div>
+
+  <div id="loading" role="status" aria-live="polite">
+    <div class="typewriter" id="loading-text">Anna Laura AI</div>
+  </div>
+
+  <div id="app" style="display:none;">
+    <header>
+      <h1>Anna Laura AI</h1>
+      <p>Powered by SOEPARNO ENTERPRISE Corp.</p>
+    </header>
+
+    <div class="chat-wrap">
+      <div id="messages" aria-live="polite">
+        <div class="bubble ai">
+          <div>Hello! Laura siap membantu. Apa yang ingin kamu tanyakan?</div>
+          <div class="msg-actions" aria-hidden="true">
+            <button class="copy-btn">Copy</button>
+            <button class="like-btn">👍</button>
+            <button class="dislike-btn">👎</button>
+            <button class="sound-btn">🔊</button>
+            <button class="reload-btn">⟳</button>
+            <button class="share-btn">Share</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="typing" class="">AI is thinking...</div>
+
+      <div class="smallfooter">© 2025 SOEPARNO ENTERPRISE Corp.</div>
+
+      <footer>
+        <div class="input-row" role="region" aria-label="Chat input">
+          <button id="plus-btn" title="Upload image (vision)">＋</button>
+          <textarea id="user-input" placeholder="Tulis pesan..." rows="1" aria-label="Pesan"></textarea>
+          <button id="send-btn" aria-label="Kirim pesan">Send</button>
+        </div>
+      </footer>
+    </div>
+  </div>
+
+  <script src="/chat.js"></script>
+</body>
+</html>
