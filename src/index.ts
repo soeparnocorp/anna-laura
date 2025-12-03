@@ -3,9 +3,29 @@
  * SOEPARNO ENTERPRISE Corp.
  * 
  * Enterprise AI assistant with persona rules, content filtering, and session management.
+ * Fixed version with inline types to avoid import/deployment errors.
  */
 
-import { Env, ChatMessage } from "./types";
+// ==================== INLINE TYPE DEFINITIONS ====================
+// Defined locally to avoid import errors from types.ts
+
+interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+interface Env {
+  AI: any;  // Cloudflare AI binding
+  ASSETS: { fetch: (request: Request) => Promise<Response> };  // Static files
+  CHAT_BUCKET?: any;  // Optional R2 bucket for chat storage
+}
+
+interface ContentCheck {
+  allowed: boolean;
+  reason?: string;
+  boundary?: "porn" | "politics" | "harmful";
+}
+// ==================== END TYPE DEFINITIONS ====================
 
 // Available AI models (Cloudflare Workers AI)
 const AVAILABLE_MODELS = {
@@ -85,6 +105,7 @@ const BOUNDARY_KEYWORDS = {
   ]
 };
 
+// Main Worker export
 export default {
   /**
    * Main request handler for Anna Laura AI
@@ -130,7 +151,8 @@ export default {
           assistant: 'Anna Laura AI',
           version: 'demo',
           enterprise: 'SOEPARNO ENTERPRISE Corp.',
-          location: 'Sukabumi, Jawa Barat - INDONESIA'
+          location: 'Sukabumi, Jawa Barat - INDONESIA',
+          timestamp: Date.now()
         }), 
         { 
           headers: { 
@@ -153,12 +175,12 @@ export default {
       }
     );
   },
-} satisfies ExportedHandler<Env>;
+};
 
 /**
  * Check if message contains boundary violations
  */
-function checkContentBoundaries(content: string): { allowed: boolean; reason?: string } {
+function checkContentBoundaries(content: string): ContentCheck {
   const lowerContent = content.toLowerCase();
   
   // Check porn keywords
@@ -166,7 +188,8 @@ function checkContentBoundaries(content: string): { allowed: boolean; reason?: s
     if (lowerContent.includes(keyword)) {
       return { 
         allowed: false, 
-        reason: 'Maaf, Anna Laura tidak melayani konten dewasa atau pornografi.' 
+        reason: 'Maaf, Anna Laura tidak melayani konten dewasa atau pornografi.',
+        boundary: 'porn'
       };
     }
   }
@@ -176,7 +199,8 @@ function checkContentBoundaries(content: string): { allowed: boolean; reason?: s
     if (lowerContent.includes(keyword)) {
       return { 
         allowed: false, 
-        reason: 'Maaf, Laura tidak membahas topik politik atau pemilihan.' 
+        reason: 'Maaf, Laura tidak membahas topik politik atau pemilihan.',
+        boundary: 'politics'
       };
     }
   }
@@ -186,7 +210,8 @@ function checkContentBoundaries(content: string): { allowed: boolean; reason?: s
     if (lowerContent.includes(keyword)) {
       return { 
         allowed: false, 
-        reason: 'Maaf, saya tidak dapat membantu dengan permintaan tersebut.' 
+        reason: 'Maaf, saya tidak dapat membantu dengan permintaan tersebut.',
+        boundary: 'harmful'
       };
     }
   }
@@ -204,10 +229,12 @@ async function handleChatRequest(
 ): Promise<Response> {
   try {
     // Parse request
-    const { messages = [], model: requestedModel } = (await request.json()) as {
+    const requestBody = await request.json() as {
       messages: ChatMessage[];
       model?: keyof typeof AVAILABLE_MODELS;
     };
+    
+    const { messages = [], model: requestedModel } = requestBody;
 
     // Check last user message for boundaries
     const lastUserMessage = messages
@@ -221,7 +248,8 @@ async function handleChatRequest(
           JSON.stringify({ 
             error: 'content_boundary',
             message: contentCheck.reason,
-            assistant: 'Anna Laura'
+            assistant: 'Anna Laura',
+            boundary: contentCheck.boundary
           }), 
           { 
             status: 400, 
@@ -246,37 +274,55 @@ async function handleChatRequest(
       : DEFAULT_MODEL;
 
     // Call Cloudflare AI
-    const response = await env.AI.run(
+    const aiResponse = await env.AI.run(
       modelId,
       {
         messages: chatMessages,
         max_tokens: 2048,
         temperature: 0.7,
-      },
-      {
-        returnRawResponse: true,
       }
     );
 
-    // Return response with CORS headers
-    const headers = new Headers(response.headers);
-    for (const [key, value] of Object.entries(corsHeaders)) {
-      headers.set(key, value);
+    // Format response (handle both streaming and non-streaming)
+    let responseText = '';
+    
+    if (typeof aiResponse === 'string') {
+      responseText = aiResponse;
+    } else if (aiResponse.response) {
+      responseText = aiResponse.response;
+    } else if (aiResponse.text) {
+      responseText = aiResponse.text;
+    } else {
+      responseText = JSON.stringify(aiResponse);
     }
 
-    return new Response(response.body, {
-      status: response.status,
-      headers
-    });
+    // Return formatted response
+    return new Response(
+      JSON.stringify({
+        response: responseText,
+        model: modelId,
+        timestamp: Date.now(),
+        assistant: 'Anna Laura AI'
+      }), 
+      {
+        headers: { 
+          ...corsHeaders, 
+          'Content-Type': 'application/json' 
+        }
+      }
+    );
 
   } catch (error) {
     console.error("Anna Laura AI Error:", error);
+    
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     
     return new Response(
       JSON.stringify({ 
         error: "internal_error",
         message: "Anna Laura sedang mengalami kendala teknis. Silakan coba lagi.",
-        details: error instanceof Error ? error.message : "Unknown error"
+        details: errorMessage,
+        assistant: 'Anna Laura AI'
       }), 
       {
         status: 500,
@@ -307,16 +353,14 @@ async function storeChatSession(
         metadata: {
           ...metadata,
           expiresAt: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
-          assistant: "Anna Laura AI"
+          assistant: "Anna Laura AI",
+          version: "demo"
         }
       };
       
       await env.CHAT_BUCKET.put(
         `sessions/${sessionId}.json`,
-        JSON.stringify(data),
-        {
-          expiration: Math.floor((Date.now() + 24 * 60 * 60 * 1000) / 1000) // 24h TTL
-        }
+        JSON.stringify(data)
       );
     }
   } catch (error) {
