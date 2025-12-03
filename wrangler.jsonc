@@ -17,7 +17,7 @@
   "r2_buckets": [
     {
       "binding": "CHAT_BUCKET",
-      "bucket_name": "CHAT_BUCKET"
+      "bucket_name": "chatbucket"
     }
   ],
   "upload_source_maps": true
