@@ -14,16 +14,16 @@
   "ai": {
     "binding": "AI"
   },
-  "bindings": [
+  "r2_buckets": [
     {
-      "type": "r2_bucket",
-      "name": "CHAT_BUCKET",
+      "binding": "CHAT_BUCKET",
       "bucket_name": "chatbucket"
-    },
+    }
+  ],
+  "kv_namespaces": [
     {
-      "type": "kv_namespace",
-      "name": "CHAT_BUCKET_KV",
-      "namespace_id": "CHAT_BUCKET_KV"
+      "binding": "CHAT_BUCKET_KV",
+      "id": "CHAT_BUCKET_KV"
     }
   ],
   "upload_source_maps": true
