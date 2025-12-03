@@ -1,8 +1,8 @@
 /**
  * Anna Laura AI - Enterprise Chat Assistant
- * Enhanced version for SOEPARNO ENTERPRISE Corp.
+ * Enhanced version with 24-hour memory and session management
  * 
- * Handles the chat UI interactions and communication with the backend API.
+ * Handles chat UI with Anna Laura persona rules and memory limits.
  */
 
 // DOM elements
@@ -14,21 +14,100 @@ const themeToggle = document.getElementById("theme-toggle");
 const modelIndicator = document.getElementById("model-indicator");
 
 // Chat state
-let chatHistory = [
-  {
-    role: "assistant",
-    content: "Hello! I'm **Anna Laura AI**, your enterprise AI assistant powered by Cloudflare Workers AI.\n\nThis is a **demo version** - no login required. How can I help you today?"
-  },
-];
+let chatHistory = [];
 let isProcessing = false;
 let currentTheme = localStorage.getItem('anna-laura-theme') || 'light';
-let messageCount = 0;
+let sessionId = generateSessionId();
+let sessionStartTime = Date.now();
+const SESSION_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
 
 // Initialize
 function init() {
   applyTheme();
   setupEventListeners();
-  updateMessageCount();
+  loadSession();
+  updateUI();
+}
+
+// Generate unique session ID
+function generateSessionId() {
+  return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+// Session Management
+function loadSession() {
+  const savedSession = localStorage.getItem('anna-laura-session');
+  const savedHistory = localStorage.getItem('anna-laura-history');
+  
+  if (savedSession) {
+    const session = JSON.parse(savedSession);
+    const now = Date.now();
+    
+    // Check if session is still valid (less than 24 hours old)
+    if (now - session.startTime < SESSION_DURATION) {
+      sessionId = session.id;
+      sessionStartTime = session.startTime;
+      
+      if (savedHistory) {
+        chatHistory = JSON.parse(savedHistory);
+        renderChatHistory();
+      }
+    } else {
+      // Session expired, create new one
+      clearExpiredSession();
+      createWelcomeMessage();
+    }
+  } else {
+    createWelcomeMessage();
+  }
+  
+  updateSessionTimer();
+}
+
+function saveSession() {
+  const sessionData = {
+    id: sessionId,
+    startTime: sessionStartTime,
+    lastActivity: Date.now(),
+    messageCount: chatHistory.filter(msg => msg.role === 'user').length
+  };
+  
+  localStorage.setItem('anna-laura-session', JSON.stringify(sessionData));
+  localStorage.setItem('anna-laura-history', JSON.stringify(chatHistory));
+}
+
+function clearExpiredSession() {
+  localStorage.removeItem('anna-laura-session');
+  localStorage.removeItem('anna-laura-history');
+  sessionId = generateSessionId();
+  sessionStartTime = Date.now();
+  chatHistory = [];
+}
+
+function updateSessionTimer() {
+  const elapsed = Date.now() - sessionStartTime;
+  const remaining = SESSION_DURATION - elapsed;
+  
+  if (remaining <= 0) {
+    // Session expired
+    clearExpiredSession();
+    createWelcomeMessage();
+    updateUI();
+  }
+  
+  // Update every minute
+  setTimeout(updateSessionTimer, 60000);
+}
+
+function createWelcomeMessage() {
+  chatHistory = [
+    {
+      role: "assistant",
+      content: `Hello! I'm **Anna Laura**, your enterprise AI assistant created by **SOEPARNO ENTERPRISE Corp.**\n\n**About this session:**\n• This is a **demo version** - no login required\n• I will remember our conversation for **24 hours**\n• Session data will reset when you close or refresh the tab\n\nHow can I help you today?`
+    }
+  ];
+  saveSession();
+  renderChatHistory();
 }
 
 // Theme management
@@ -37,12 +116,8 @@ function applyTheme() {
   const icon = themeToggle.querySelector('svg');
   
   if (currentTheme === 'dark') {
-    // Change to moon icon for dark mode
-    icon.innerHTML = `
-      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
-    `;
+    icon.innerHTML = `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>`;
   } else {
-    // Sun icon for light mode
     icon.innerHTML = `
       <circle cx="12" cy="12" r="5"/>
       <line x1="12" y1="1" x2="12" y2="3"/>
@@ -65,7 +140,7 @@ function toggleTheme() {
 
 // Setup all event listeners
 function setupEventListeners() {
-  // Auto-resize textarea as user types
+  // Auto-resize textarea
   userInput.addEventListener("input", function () {
     this.style.height = "auto";
     this.style.height = this.scrollHeight + "px";
@@ -79,28 +154,57 @@ function setupEventListeners() {
     }
   });
 
-  // Send button click handler
+  // Send button
   sendButton.addEventListener("click", sendMessage);
 
   // Theme toggle
   themeToggle.addEventListener("click", toggleTheme);
 
-  // Clear chat on Ctrl+Shift+C (for testing)
+  // Clear session on Ctrl+Shift+R (force reset)
   document.addEventListener('keydown', (e) => {
-    if (e.ctrlKey && e.shiftKey && e.key === 'C') {
-      clearChat();
+    if (e.ctrlKey && e.shiftKey && e.key === 'R') {
+      if (confirm("Reset session and clear all chat history?")) {
+        clearExpiredSession();
+        createWelcomeMessage();
+        updateUI();
+      }
+    }
+  });
+
+  // Warn before leaving with unsaved changes
+  window.addEventListener('beforeunload', (e) => {
+    if (chatHistory.length > 1) { // More than just welcome message
+      // Optional: Can save to R2 or show warning
     }
   });
 }
 
-// Update message count in model indicator
-function updateMessageCount() {
-  messageCount = chatHistory.filter(msg => msg.role === 'user').length;
-  modelIndicator.textContent = `Cloudflare AI • ${messageCount} messages`;
+// Update UI elements
+function updateUI() {
+  const userMessages = chatHistory.filter(msg => msg.role === 'user').length;
+  const elapsed = Date.now() - sessionStartTime;
+  const hoursLeft = Math.max(0, Math.floor((SESSION_DURATION - elapsed) / (60 * 60 * 1000)));
+  
+  modelIndicator.textContent = `Anna Laura AI • ${userMessages} messages • ${hoursLeft}h left`;
+  modelIndicator.title = `Session valid for ${hoursLeft} more hours`;
+}
+
+// Render chat history to UI
+function renderChatHistory() {
+  chatMessages.innerHTML = '';
+  chatHistory.forEach(msg => {
+    const messageEl = createMessageElement(msg.role, msg.content);
+    chatMessages.appendChild(messageEl);
+    
+    if (msg.role === 'assistant') {
+      addCopyButton(messageEl);
+    }
+  });
+  scrollToBottom();
 }
 
 /**
- * Sends a message to the chat API and processes the response
+ * Sends a message to the chat API
  */
 async function sendMessage() {
   const message = userInput.value.trim();
@@ -125,14 +229,13 @@ async function sendMessage() {
 
   // Add message to history
   chatHistory.push({ role: "user", content: message });
-  updateMessageCount();
+  saveSession();
+  updateUI();
 
   try {
-    // Create new assistant response element with copy button
+    // Create assistant response element
     const assistantMessageEl = createMessageElement("assistant", "");
     chatMessages.appendChild(assistantMessageEl);
-
-    // Scroll to bottom
     scrollToBottom();
 
     // Send request to API
@@ -143,10 +246,22 @@ async function sendMessage() {
       },
       body: JSON.stringify({
         messages: chatHistory,
+        model: "llama-3.3-70b" // Default model
       }),
     });
 
-    // Handle errors
+    // Handle content boundary errors
+    if (response.status === 400) {
+      const errorData = await response.json();
+      if (errorData.error === 'content_boundary') {
+        updateMessageContent(assistantMessageEl, errorData.message);
+        chatHistory.push({ role: "assistant", content: errorData.message });
+        saveSession();
+        return;
+      }
+    }
+
+    // Handle other errors
     if (!response.ok) {
       throw new Error(`API Error: ${response.status}`);
     }
@@ -155,7 +270,6 @@ async function sendMessage() {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let responseText = "";
-    let isFirstChunk = true;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -167,63 +281,63 @@ async function sendMessage() {
       // Decode chunk
       const chunk = decoder.decode(value, { stream: true });
 
-      // Process SSE format or direct JSON
+      // Process JSON response
       try {
-        // Try to parse as JSON (for Cloudflare AI format)
         const jsonData = JSON.parse(chunk);
         if (jsonData.response || jsonData.content) {
           const newContent = jsonData.response || jsonData.content || "";
           if (newContent) {
             responseText += newContent;
             updateMessageContent(assistantMessageEl, responseText);
-            isFirstChunk = false;
           }
         }
       } catch (e) {
-        // If not JSON, might be plain text or other format
+        // If not JSON, treat as plain text
         if (chunk.trim() && !chunk.includes('data:') && !chunk.includes('event:')) {
           responseText += chunk;
           updateMessageContent(assistantMessageEl, responseText);
-          isFirstChunk = false;
         }
       }
 
-      // Scroll to bottom as content arrives
       scrollToBottom();
     }
 
-    // If no content was received, show default message
+    // If no content, show default
     if (!responseText) {
-      responseText = "I've processed your request. Is there anything else I can help you with?";
+      responseText = "I've processed your request. Is there anything else Anna Laura can help you with?";
       updateMessageContent(assistantMessageEl, responseText);
     }
 
-    // Add copy button to completed message
+    // Add copy button
     addCopyButton(assistantMessageEl);
 
-    // Add completed response to chat history
+    // Save to history
     chatHistory.push({ role: "assistant", content: responseText });
+    saveSession();
 
   } catch (error) {
     console.error("Chat Error:", error);
     addMessageToChat(
       "assistant",
-      "Sorry, there was an error processing your request. Please try again."
+      "Maaf, Anna Laura sedang mengalami kendala teknis. Silakan coba lagi."
     );
+    chatHistory.push({ 
+      role: "assistant", 
+      content: "Maaf, Anna Laura sedang mengalami kendala teknis. Silakan coba lagi."
+    });
+    saveSession();
   } finally {
-    // Hide typing indicator
     hideTypingIndicator();
-
-    // Re-enable input
     isProcessing = false;
     userInput.disabled = false;
     sendButton.disabled = false;
     userInput.focus();
+    updateUI();
   }
 }
 
 /**
- * Helper function to add message to chat with enhanced formatting
+ * Helper function to add message to chat
  */
 function addMessageToChat(role, content) {
   const messageEl = createMessageElement(role, content);
@@ -245,14 +359,12 @@ function createMessageElement(role, content) {
   
   const avatar = document.createElement("div");
   avatar.className = "avatar";
-  avatar.textContent = role === 'user' ? 'U' : 'AI';
+  avatar.textContent = role === 'user' ? 'U' : 'AL'; // AL for Anna Laura
+  avatar.title = role === 'user' ? 'User' : 'Anna Laura';
   
   const contentDiv = document.createElement("div");
   contentDiv.className = "message-content";
-  
-  // Simple markdown-like formatting
-  const formattedContent = formatContent(content);
-  contentDiv.innerHTML = formattedContent;
+  contentDiv.innerHTML = formatContent(content);
   
   messageEl.appendChild(avatar);
   messageEl.appendChild(contentDiv);
@@ -261,19 +373,19 @@ function createMessageElement(role, content) {
 }
 
 /**
- * Simple content formatting (bold, italics, code)
+ * Simple content formatting
  */
 function formatContent(content) {
   if (!content) return '<p></p>';
   
   let formatted = content
-    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>') // **bold**
-    .replace(/\*(.*?)\*/g, '<em>$1</em>') // *italic*
-    .replace(/`([^`]+)`/g, '<code>$1</code>') // `code`
-    .replace(/\n\n/g, '</p><p>') // Paragraphs
-    .replace(/\n/g, '<br>'); // Line breaks
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+    .replace(/\n\n/g, '</p><p>')
+    .replace(/\n/g, '<br>');
   
-  // Wrap in paragraph if not already
   if (!formatted.startsWith('<p>')) {
     formatted = `<p>${formatted}</p>`;
   }
@@ -295,7 +407,6 @@ function updateMessageContent(messageEl, content) {
  * Add copy button to message
  */
 function addCopyButton(messageEl) {
-  // Check if copy button already exists
   if (messageEl.querySelector('.copy-button')) return;
   
   const contentDiv = messageEl.querySelector('.message-content');
@@ -319,7 +430,6 @@ function addCopyButton(messageEl) {
     font-size: 12px;
   `;
   
-  // Show on hover
   messageEl.addEventListener('mouseenter', () => {
     copyButton.style.opacity = '1';
   });
@@ -327,7 +437,6 @@ function addCopyButton(messageEl) {
     copyButton.style.opacity = '0';
   });
   
-  // Copy functionality
   copyButton.addEventListener('click', async (e) => {
     e.stopPropagation();
     const text = messageEl.querySelector('.message-content').textContent;
@@ -348,7 +457,6 @@ function addCopyButton(messageEl) {
     }
   });
   
-  // Position relative for absolute positioning
   messageEl.style.position = 'relative';
   messageEl.appendChild(copyButton);
 }
@@ -375,29 +483,6 @@ function scrollToBottom() {
   }, 100);
 }
 
-/**
- * Clear chat (for testing)
- */
-function clearChat() {
-  if (confirm("Clear all chat messages? This cannot be undone.")) {
-    chatMessages.innerHTML = `
-      <div class="message assistant">
-        <div class="avatar">AI</div>
-        <div class="message-content">
-          <p>Chat cleared. I'm <strong>Anna Laura AI</strong>, your enterprise AI assistant. How can I help you now?</p>
-        </div>
-      </div>
-    `;
-    chatHistory = [
-      {
-        role: "assistant",
-        content: "Chat cleared. I'm Anna Laura AI, your enterprise AI assistant. How can I help you now?"
-      }
-    ];
-    updateMessageCount();
-  }
-}
-
 // Add CSS for copy button
 const style = document.createElement('style');
 style.textContent = `
@@ -407,10 +492,14 @@ style.textContent = `
   .copy-button:hover {
     background: rgba(0,0,0,0.2) !important;
   }
+  
+  .avatar[title="Anna Laura"] {
+    background-color: #2563eb !important;
+  }
 `;
 document.head.appendChild(style);
 
-// Initialize the chat app when DOM is loaded
+// Initialize the chat app
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);
 } else {
