@@ -20,11 +20,5 @@
       "bucket_name": "chatbucket"
     }
   ],
-  "kv_namespaces": [
-    {
-      "binding": "CHAT_BUCKET_KV",
-      "id": "CHAT_BUCKET_KV"
-    }
-  ],
   "upload_source_maps": true
 }
