@@ -1,0 +1,139 @@
+/**
+ * Grok Lite – Frontend Chat FINAL (100 % fix untuk semua model)
+ */
+
+const chatMessages = document.getElementById("chat-messages");
+const userInput = document.getElementById("user-input");
+const sendButton = document.getElementById("send-button");
+const typingIndicator = document.getElementById("typing-indicator");
+const modelSelect = document.getElementById("model-select");
+const tempSlider = document.getElementById("temp-slider");
+const tempValue = document.getElementById("temp-value");
+
+let chatHistory = [
+  {
+    role: "system",
+    content:
+      "Kamu adalah Grok Lite – helpful, sarkastik, santai, dan selalu jawab dalam bahasa Indonesia yang asik.",
+  },
+];
+
+tempSlider.addEventListener("input", () => {
+  tempValue.textContent = tempSlider.value.padEnd(4, "0");
+});
+
+userInput.addEventListener("input", function () {
+  this.style.height = "auto";
+  this.style.height = this.scrollHeight + "px";
+});
+
+userInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+});
+
+sendButton.addEventListener("click", sendMessage);
+
+async function sendMessage() {
+  const message = userInput.value.trim();
+  if (!message || sendButton.disabled) return;
+
+  sendButton.disabled = true;
+  userInput.disabled = true;
+  addMessage("user", message);
+  userInput.value = "";
+  userInput.style.height = "auto";
+  typingIndicator.classList.add("visible");
+
+  chatHistory.push({ role: "user", content: message });
+
+  const aiDiv = document.createElement("div");
+  aiDiv.className = "message assistant-message";
+  aiDiv.innerHTML = `<div class="content"></div>`;
+  chatMessages.appendChild(aiDiv);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  try {
+    const payload = {
+      messages: chatHistory,
+      model: modelSelect.value,
+    };
+
+    // Hanya kirim temperature kalau model support (Llama 70B, Mistral, dll)
+    // Model seperti Gemma & Qwen 7B sering reject temperature → kita skip aja
+    const temp = parseFloat(tempSlider.value);
+    if (!isNaN(temp) && temp !== 0.7) {
+      payload.temperature = temp;
+    }
+
+    const res = await fetch("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(err || "Network error");
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let fullText = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const json = JSON.parse(line);
+          if (json.response) {
+            fullText += json.response;
+            aiDiv.querySelector(".content").innerHTML = marked.parse(fullText);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+          }
+        } catch (e) {}
+      }
+    }
+
+    // Pastikan buffer sisa terakhir ikut
+    if (buffer.trim()) {
+      try {
+        const json = JSON.parse(buffer);
+        if (json.response) {
+          fullText += json.response;
+          aiDiv.querySelector(".content").innerHTML = marked.parse(fullText);
+        }
+      } catch (e) {}
+    }
+
+    const finalAnswer = aiDiv.querySelector(".content").innerText || "";
+    chatHistory.push({ role: "assistant", content: finalAnswer });
+  } catch (err) {
+    console.error(err);
+    addMessage("assistant", "Maaf bro, ada error. Coba lagi ya.");
+  } finally {
+    typingIndicator.classList.remove("visible");
+    sendButton.disabled = false;
+    userInput.disabled = false;
+    userInput.focus();
+  }
+}
+
+function addMessage(role, content) {
+  const div = document.createElement("div");
+  div.className = `message ${role}-message`;
+  const rendered = role === "user" ? content : marked.parse(content);
+  div.innerHTML = `<div class="content">${rendered}</div>`;
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
