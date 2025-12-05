@@ -1,4 +1,4 @@
-// chat.js – frontend logic untuk Grok Lite AI
+// chat.js – versi stabil Grok Lite AI
 
 const chatMessages = document.getElementById("chat-messages");
 const userInput = document.getElementById("user-input");
@@ -39,7 +39,7 @@ sendMessage();
 sendButton.addEventListener("click", sendMessage);
 
 async function sendMessage() {
-const message = userInput.value.trim();
+const message = (userInput.value || "").trim();
 if (message === "" || isProcessing) return;
 
 isProcessing = true;
@@ -54,9 +54,7 @@ typingIndicator.classList.add("visible");
 
 chatHistory.push({ role: "user", content: message });
 
-// Easter egg: jika user ketik "Grok mode", AI jawab iseng
-let easterMode = false;
-if (/grok mode/i.test(message)) easterMode = true;
+let easterMode = /grok mode/i.test(message);
 
 try {
 const assistantMessageEl = document.createElement("div");
@@ -116,9 +114,10 @@ userInput.focus();
 }
 
 function addMessageToChat(role, content) {
+if (!content) content = "";
 const messageEl = document.createElement("div");
 messageEl.className = "message ${role}-message";
-messageEl.innerHTML = "<p>${content}</p>";
+messageEl.textContent = content; // aman, no template literal
 chatMessages.appendChild(messageEl);
 chatMessages.scrollTop = chatMessages.scrollHeight;
 }
